@@ -1,0 +1,104 @@
+// This edge function fetches the token list from CoinMarketCap API
+
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
+  try {
+    // Only accept POST requests
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      });
+    }
+
+    // Parse the request body
+    const body = await req.json();
+    const { apiKey, listingStatus = 'active', limit = 5000 } = body;
+
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "API key is required" }), {
+        status: 400,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      });
+    }
+
+    // Make request to CoinMarketCap API with additional parameters
+    // Adding sort=market_cap to sort by market cap and limit to get top tokens
+    const url = `https://pro-api.coinmarketcap.com/v1/cryptocurrency/map?listing_status=${listingStatus}&sort=cmc_rank&limit=${limit}`;
+    console.log(`Fetching token list from: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        "X-CMC_PRO_API_KEY": apiKey,
+        "Accept": "application/json",
+      },
+    });
+
+    // Check for errors
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`CoinMarketCap API error (${response.status}): ${errorText}`);
+      
+      return new Response(
+        JSON.stringify({
+          error: `CoinMarketCap API error: ${response.status} ${response.statusText}`,
+        }),
+        {
+          status: response.status,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+    }
+
+    // Get the response data
+    const data = await response.json();
+
+    // Return the response
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+      },
+    });
+  } catch (error) {
+    console.error("Error in token-list edge function:", error);
+
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+});
